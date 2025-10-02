@@ -241,9 +241,17 @@
       input.addEventListener("keydown",e=>{"Enter"===e.key&&btn.click()});
       db.ref("public").on("value",snap=>{
         log.innerHTML="";
-        const msgs=snap.val()||{};
+                const msgs=snap.val()||{};
         Object.values(msgs).forEach(m=>{
-          const timeStr=new Date(m.time).toconst timeStr=new Date(m.time).toLocaleString([],{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false,timeZoneName:"short"});
+          const timeStr=new Date(m.time).toLocaleString([],{
+            year:"numeric",
+            month:"2-digit",
+            day:"2-digit",
+            hour:"2-digit",
+            minute:"2-digit",
+            hour12:false,
+            timeZoneName:"short"
+          });
           const div=el("div");
           div.innerHTML=`[${timeStr}] <b style="color:#4af;cursor:pointer" onclick="startDM('${m.from}')">${m.from}</b>: ${m.text}`;
           log.appendChild(div);
