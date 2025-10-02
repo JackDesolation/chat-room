@@ -7,22 +7,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <style>
-    #toast {
-      visibility: hidden;
-      min-width: 200px;
-      background: #333;
-      color: #fff;
-      text-align: center;
-      border-radius: 5px;
-      padding: 10px;
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      z-index: 1000000;
-      opacity: 0;
-      transition: opacity 0.5s, visibility 0.5s;
-    }
-    #toast.show { visibility: visible; opacity: 1; }
     .sidebar-btn {
       background: #444; color: #fff; border: none;
       padding: 10px; cursor: pointer; text-align: left;
@@ -31,7 +15,6 @@
   </style>
 </head>
 <body>
-  <div id="toast"></div>
   <script>
     const config = {
       apiKey: "AIzaSyBzD-l4u_VN2klpfvsra-Pv7T1Tsf2BbMA",
@@ -73,7 +56,6 @@
     };
     ["mousemove","keydown","click"].forEach(e=>document.addEventListener(e,trackActivity));
 
-    // Idle on tab out
     document.addEventListener("visibilitychange",()=>{
       if(document.hidden){ updateStatus("Idle"); }
       else { updateStatus("Online"); lastActivity=Date.now(); }
@@ -100,21 +82,6 @@
       }
     }
     applyTheme(localStorage.getItem("theme")!=="light");
-
-    document.addEventListener("DOMContentLoaded",()=>{
-      if("Notification" in window && Notification.permission!=="granted"){
-        Notification.requestPermission().catch(()=>{});
-      }
-    });
-
-    const getDnd = ()=> localStorage.getItem("dnd")==="true";
-    const getNotif = ()=> localStorage.getItem("notif")!=="false";
-    const getSound = ()=> localStorage.getItem("sound")!=="false";
-
-    function playSound(){ if(getSound() && !getDnd()){ new Audio("notification.mp3").play().catch(()=>{});} }
-    function showSystemNotification(u,m){ if(getDnd()||!getNotif())return; if("Notification" in window&&Notification.permission==="granted"){ new Notification(`${u} says:`,{body:m,icon:"chat-icon.png",requireInteraction:true});} }
-    function showToast(m){ if(getDnd()||!getNotif())return; const t=document.getElementById("toast"); t.textContent=m; t.className="show"; setTimeout(()=>{t.className=t.className.replace("show","");},3000);}
-    function notifyUser(u,m){ showSystemNotification(u,m); showToast(`${u}: ${m}`); playSound(); }
 
     function isScrolledToBottom(log){ return log.scrollHeight - log.scrollTop - log.clientHeight < 5; }
     function txtSanitize(s){ return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
@@ -152,32 +119,15 @@
       else if(tab==="Settings") showSettings();
     };
 
-    // === Global Listeners for Notifications ===
     function afterLogin(){
-      // Public chat
-      db.ref("public").on("child_added",snap=>{
-        const m=snap.val();
-        if(m && m.from!==currentUser){ notifyUser(m.from,m.text); }
-      });
-      // DMs
-      db.ref("messages/"+currentUser).on("child_added",snap=>{
-        const thread=snap.key;
-        db.ref("messages/"+currentUser+"/"+thread).limitToLast(1).on("child_added",s=>{
-          const m=s.val();
-          if(m && m.from!==currentUser){ notifyUser(m.from,m.text); }
-        });
-      });
-            // Rooms
-      db.ref("rooms").on("child_added",snap=>{
-        const id=snap.key;
-        if(id.includes(currentUser)){
-          db.ref("rooms/"+id).limitToLast(1).on("child_added",s=>{
-            const m=s.val();
-            if(m && m.from!==currentUser){ notifyUser(m.from,m.text); }
-          });
-        }
-      });
+      // Public chat listener (no notifications)
+      db.ref("public").on("child_added",()=>{});
+      // DMs listener
+      db.ref("messages/"+currentUser).on("child_added",()=>{});
+      // Rooms listener
+      db.ref("rooms").on("child_added",()=>{});
     }
+
     const showFriends=()=>{
       content.innerHTML="<h3>Your Friends</h3>";
       const input=el("input"); input.placeholder="Username to friend";
@@ -347,7 +297,7 @@
       content.append(roomList);
     };
 
-        const showRoom=roomId=>{
+    const showRoom=roomId=>{
       content.innerHTML=`<h3>Room: ${roomId}</h3>`;
       const log=el("div");
       css(log,{height:"60vh",overflowY:"auto",border:"1px solid #333",padding:"5px",marginBottom:"10px",background:"#181818",color:"#eee"});
@@ -400,49 +350,22 @@
     function showSettings(){
       content.innerHTML="<h3>Settings</h3>";
 
-      const dndLabel=el("label"," Do Not Disturb");
-      const dndToggle=el("input"); dndToggle.type="checkbox"; dndToggle.id="dnd-toggle";
-      dndLabel.prepend(dndToggle);
-
-      const notifLabel=el("label"," Enable Notifications");
-      const notifToggle=el("input"); notifToggle.type="checkbox"; notifToggle.id="notif-toggle";
-      notifLabel.prepend(notifToggle);
-
-      const soundLabel=el("label"," Enable Sound");
-      const soundToggle=el("input"); soundToggle.type="checkbox"; soundToggle.id="sound-toggle";
-      soundLabel.prepend(soundToggle);
-
       const themeLabel=el("label"," Dark Mode");
       const themeToggle=el("input"); themeToggle.type="checkbox"; themeToggle.id="theme-toggle";
       themeLabel.prepend(themeToggle);
 
-      [dndLabel,notifLabel,soundLabel,themeLabel].forEach(l=>{
-        css(l,{display:"block",marginBottom:"10px",cursor:"pointer"});
-        content.appendChild(l);
-      });
+      css(themeLabel,{display:"block",marginBottom:"10px",cursor:"pointer"});
+      content.appendChild(themeLabel);
 
       // Restore settings
-      dndToggle.checked = localStorage.getItem("dnd")==="true";
-      notifToggle.checked = localStorage.getItem("notif")!=="false";
-      soundToggle.checked = localStorage.getItem("sound")!=="false";
       themeToggle.checked = localStorage.getItem("theme")!=="light";
-
       applyTheme(themeToggle.checked);
 
       // Save on change
-      dndToggle.onchange=()=>localStorage.setItem("dnd", dndToggle.checked);
-      notifToggle.onchange=()=>localStorage.setItem("notif", notifToggle.checked);
-      soundToggle.onchange=()=>localStorage.setItem("sound", soundToggle.checked);
       themeToggle.onchange=()=>{
         localStorage.setItem("theme", themeToggle.checked ? "dark" : "light");
         applyTheme(themeToggle.checked);
       };
-
-      notifToggle.addEventListener("change",()=>{
-        if(notifToggle.checked && "Notification" in window && Notification.permission!=="granted"){
-          Notification.requestPermission().catch(()=>{});
-        }
-      });
     }
 
     // Initialize
