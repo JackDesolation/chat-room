@@ -1,0 +1,1 @@
+This is just a simple firebase chat thing i've been working on, if you feel like forking it for whatever reasons you will have to change the "firebase" information as to have a seperate chat from the one I have control over.
