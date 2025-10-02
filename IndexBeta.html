@@ -19,7 +19,7 @@
       position: fixed;
       bottom: 20px;
       right: 20px;
-      z-index: 1000;
+      z-index: 1000000;
       opacity: 0;
       transition: opacity 0.5s, visibility 0.5s;
     }
@@ -27,32 +27,23 @@
       visibility: visible;
       opacity: 1;
     }
-    .notif-controls {
-      position: fixed;
-      bottom: 10px;
-      left: 10px;
-      background: #222;
-      color: #eee;
-      padding: 8px;
-      border: 1px solid #555;
-      border-radius: 5px;
-      font-family: sans-serif;
-      font-size: 14px;
+    /* Basic button styles for sidebar */
+    .sidebar-btn {
+      background: #444;
+      color: #fff;
+      border: none;
+      padding: 10px;
+      cursor: pointer;
+      text-align: left;
     }
-    .notif-controls label {
-      display: block;
-      margin-bottom: 4px;
+    .sidebar-btn:hover {
+      background: #555;
     }
   </style>
 </head>
 <body>
   <!-- Toast container -->
   <div id="toast"></div>
-  <!-- Notification controls -->
-  <div class="notif-controls">
-    <label><input type="checkbox" id="sound-toggle" checked /> Enable sound</label>
-    <label><input type="checkbox" id="dnd-toggle" /> Do Not Disturb</label>
-  </div>
 
   <script>
     const config = {
@@ -69,23 +60,30 @@
 
     const el=(t,txt)=>Object.assign(document.createElement(t),{textContent:txt||""});
     const css=(e,s)=>Object.assign(e.style,s);
+
+    // Container and layout
     const container=el("div");
     css(container,{position:"fixed",top:0,left:0,width:"100vw",height:"100vh",zIndex:999999,display:"flex",fontFamily:"sans-serif",background:"#111",color:"#eee"});
+
     const sidebar=el("div");
-    css(sidebar,{width:"140px",background:"#222",padding:"10px",boxSizing:"border-box",display:"flex",flexDirection:"column",gap:"5px"});
-    ["Chat","Friends","DMs","Rooms"].forEach(tab=>{
+    css(sidebar,{width:"160px",background:"#222",padding:"10px",boxSizing:"border-box",display:"flex",flexDirection:"column",gap:"5px"});
+
+    ["Chat","Friends","DMs","Rooms","Settings"].forEach(tab=>{
       const btn=el("button",tab);
-      css(btn,{background:"#444",color:"#fff",border:"none",padding:"10px",cursor:"pointer"});
+      btn.className = "sidebar-btn";
       btn.onclick=()=>showTab(tab);
       sidebar.appendChild(btn);
     });
+
     const content=el("div");
     css(content,{flexGrow:1,padding:"10px",overflowY:"auto",boxSizing:"border-box"});
+
     container.append(sidebar,content);
     document.body.appendChild(container);
 
     let currentUser=null,lastActivity=Date.now(),idleTimer=null;
     const db=firebase.database();
+
     const updateStatus=status=>{if(currentUser)db.ref("users/"+currentUser+"/status").set(status)};
     const trackActivity=()=>{
       lastActivity=Date.now();
@@ -100,6 +98,71 @@
       const h=await crypto.subtle.digest("SHA-256",b);
       return Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,"0")).join("");
     };
+
+    // Theme helpers
+    function applyTheme(dark){
+      if(dark){
+        document.body.style.background="#111";
+        document.body.style.color="#eee";
+        css(container,{background:"#111",color:"#eee"});
+        css(sidebar,{background:"#222",color:"#eee"});
+        css(content,{color:"#eee"});
+      }else{
+        document.body.style.background="#fff";
+        document.body.style.color="#000";
+        css(container,{background:"#fff",color:"#000"});
+        css(sidebar,{background:"#f2f2f2",color:"#000"});
+        css(content,{color:"#000"});
+      }
+    }
+    // Restore theme early
+    applyTheme(localStorage.getItem("theme")!=="light");
+
+    // Notification permission on load
+    document.addEventListener("DOMContentLoaded", () => {
+      if ("Notification" in window && Notification.permission !== "granted") {
+        Notification.requestPermission().catch(()=>{});
+      }
+    });
+
+    // Settings getters
+    const getDnd = ()=> localStorage.getItem("dnd")==="true";
+    const getNotif = ()=> localStorage.getItem("notif")!=="false";
+    const getSound = ()=> localStorage.getItem("sound")!=="false";
+
+    // Notification helpers
+    function playSound() {
+      if (getSound() && !getDnd()) {
+        const audio = new Audio("notification.mp3");
+        audio.play().catch(()=>{});
+      }
+    }
+
+    function showSystemNotification(username, message) {
+      if (getDnd() || !getNotif()) return;
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(`${username} says:`, {
+          body: message,
+          icon: "chat-icon.png" // optional
+        });
+      }
+    }
+
+    function showToast(message) {
+      if (getDnd() || !getNotif()) return;
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.className = "show";
+      setTimeout(() => {
+        toast.className = toast.className.replace("show", "");
+      }, 3000);
+    }
+
+    function notifyUser(username, message){
+      showSystemNotification(username, message);
+      showToast(`${username}: ${message}`);
+      playSound();
+    }
 
     const showLogin=()=>{
       content.innerHTML="";
@@ -135,15 +198,23 @@
       else if(tab==="Friends") showFriends();
       else if(tab==="DMs") showDMs();
       else if(tab==="Rooms") showRooms();
+      else if(tab==="Settings") showSettings();
     };
 
     const sendMessage=(to,text)=>{
       if(text){
-        const msg={from:currentUser,text,time:Date.now()};
+        const msg={from:currentUser,text:txtSanitize(text),time:Date.now()};
         db.ref("messages/"+currentUser+"/"+to).push(msg);
         db.ref("messages/"+to+"/"+currentUser).push(msg);
       }
     };
+
+    // Simple sanitize to avoid HTML injection in message text
+    function txtSanitize(s){
+      return s.replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+      }[c]));
+    }
 
     const showFriends=()=>{
       content.innerHTML="<h3>Your Friends</h3>";
@@ -196,6 +267,7 @@
 
     const acceptFriendRequest=from=>{
       const updates={};
+      updates[`users/${currentUser}/friends/${from}`]=true;
       updates[`users/${from}/friends/${currentUser}`]=true;
       updates[`users/${currentUser}/friendRequests/${from}`]=null;
       db.ref().update(updates,()=>showFriends());
@@ -239,14 +311,17 @@
           const msgs=snap.val()||{};
           Object.values(msgs).sort((a,b)=>a.time-b.time).forEach(m=>{
             const timeStr=new Date(m.time).toLocaleString([],{
-              year:"numeric",month:"2-digit",day:"2-digit",
-              hour:"2-digit",minute:"2-digit",hour12:false,timeZoneName:"short"
+              year:"numeric",
+              month:"2-digit",
+              day:"2-digit",
+              hour:"2-digit",
+              minute:"2-digit",
+              hour12:false,
+              timeZoneName:"short"
             });
             const div=el("div");
-            div.innerHTML=`[${timeStr}] <b>${m.from}</b>: ${m.text}`;
+            div.innerHTML=`[${timeStr}] <b>${m.from}</b>: ${txtSanitize(m.text)}`;
             log.appendChild(div);
-
-            // 🔔 Trigger notifications for incoming messages
             if(m.from!==currentUser){
               notifyUser(m.from,m.text);
             }
@@ -269,7 +344,6 @@
       }
       content.append(log,input,btn);
     };
-
     const showChat=()=>{
       content.innerHTML="<h3>#general</h3>";
       const log=el("div");
@@ -286,7 +360,7 @@
           }else if(txt==="/clear"){
             clearChat("public");
           }else{
-            db.ref("public").push({from:currentUser,text:txt,time:Date.now()});
+            db.ref("public").push({from:currentUser,text:txtSanitize(txt),time:Date.now()});
             input.value="";
           }
         }
@@ -297,14 +371,17 @@
         const msgs=snap.val()||{};
         Object.values(msgs).forEach(m=>{
           const timeStr=new Date(m.time).toLocaleString([],{
-            year:"numeric",month:"2-digit",day:"2-digit",
-            hour:"2-digit",minute:"2-digit",hour12:false,timeZoneName:"short"
+            year:"numeric",
+            month:"2-digit",
+            day:"2-digit",
+            hour:"2-digit",
+            minute:"2-digit",
+            hour12:false,
+            timeZoneName:"short"
           });
           const div=el("div");
-          div.innerHTML=`[${timeStr}] <b style="color:#4af;cursor:pointer" onclick="startDM('${m.from}')">${m.from}</b>: ${m.text}`;
+          div.innerHTML=`[${timeStr}] <b style="color:#4af;cursor:pointer" onclick="startDM('${m.from}')">${m.from}</b>: ${txtSanitize(m.text)}`;
           log.appendChild(div);
-
-          // 🔔 Trigger notifications for incoming messages
           if(m.from!==currentUser){
             notifyUser(m.from,m.text);
           }
@@ -356,7 +433,7 @@
           if(txt==="/clear"){
             return clearChat("rooms/"+roomId);
           }
-          db.ref("rooms/"+roomId).push({from:currentUser,text:txt,time:Date.now()});
+          db.ref("rooms/"+roomId).push({from:currentUser,text:txtSanitize(txt),time:Date.now()});
           input.value="";
         }
       };
@@ -366,14 +443,17 @@
         const msgs=snap.val()||{};
         Object.values(msgs).forEach(m=>{
           const timeStr=new Date(m.time).toLocaleString([],{
-            year:"numeric",month:"2-digit",day:"2-digit",
-            hour:"2-digit",minute:"2-digit",hour12:false,timeZoneName:"short"
+            year:"numeric",
+            month:"2-digit",
+            day:"2-digit",
+            hour:"2-digit",
+            minute:"2-digit",
+            hour12:false,
+            timeZoneName:"short"
           });
           const div=el("div");
-          div.innerHTML=`[${timeStr}] <b>${m.from}</b>: ${m.text}`;
+          div.innerHTML=`[${timeStr}] <b>${m.from}</b>: ${txtSanitize(m.text)}`;
           log.appendChild(div);
-
-          // 🔔 Trigger notifications for incoming messages
           if(m.from!==currentUser){
             notifyUser(m.from,m.text);
           }
@@ -389,7 +469,7 @@
         alert(u+" banned!");
         db.ref("messages").once("value",snap=>{
           const msgs=snap.val();
-          Object.keys(msgs).forEach(chat=>{
+          Object.keys(msgs||{}).forEach(chat=>{
             db.ref("messages/"+chat+"/"+u).remove();
           });
         });
@@ -401,52 +481,62 @@
       db.ref(path).remove(()=>alert("Chat cleared!"));
     };
 
-    // === Notification Helpers ===
-    const soundToggle = document.getElementById("sound-toggle");
-    const dndToggle = document.getElementById("dnd-toggle");
+    // Settings tab (persisted with localStorage)
+    function showSettings(){
+      content.innerHTML="<h3>Settings</h3>";
 
-    // Request notification permission on load
-    document.addEventListener("DOMContentLoaded", () => {
-      if ("Notification" in window && Notification.permission !== "granted") {
-        Notification.requestPermission();
-      }
-    });
+      // Do Not Disturb
+      const dndLabel=el("label"," Do Not Disturb");
+      const dndToggle=el("input"); dndToggle.type="checkbox"; dndToggle.id="dnd-toggle";
+      dndLabel.prepend(dndToggle);
 
-    function playSound() {
-      if (soundToggle.checked && !dndToggle.checked) {
-        const audio = new Audio("notification.mp3");
-        audio.play().catch(() => {}); // ignore autoplay restrictions
-      }
+      // Notifications
+      const notifLabel=el("label"," Enable Notifications");
+      const notifToggle=el("input"); notifToggle.type="checkbox"; notifToggle.id="notif-toggle";
+      notifLabel.prepend(notifToggle);
+
+      // Sound
+      const soundLabel=el("label"," Enable Sound");
+      const soundToggle=el("input"); soundToggle.type="checkbox"; soundToggle.id="sound-toggle";
+      soundLabel.prepend(soundToggle);
+
+      // Theme
+      const themeLabel=el("label"," Dark Mode");
+      const themeToggle=el("input"); themeToggle.type="checkbox"; themeToggle.id="theme-toggle";
+      themeLabel.prepend(themeToggle);
+
+      [dndLabel,notifLabel,soundLabel,themeLabel].forEach(l=>{
+        css(l,{display:"block",marginBottom:"10px",cursor:"pointer"});
+        content.appendChild(l);
+      });
+
+      // Restore settings
+      dndToggle.checked = localStorage.getItem("dnd")==="true";
+      notifToggle.checked = localStorage.getItem("notif")!=="false";
+      soundToggle.checked = localStorage.getItem("sound")!=="false";
+      themeToggle.checked = localStorage.getItem("theme")!=="light";
+
+      // Apply theme immediately
+      applyTheme(themeToggle.checked);
+
+      // Save on change
+      dndToggle.onchange=()=>localStorage.setItem("dnd", dndToggle.checked);
+      notifToggle.onchange=()=>localStorage.setItem("notif", notifToggle.checked);
+      soundToggle.onchange=()=>localStorage.setItem("sound", soundToggle.checked);
+      themeToggle.onchange=()=>{
+        localStorage.setItem("theme", themeToggle.checked ? "dark" : "light");
+        applyTheme(themeToggle.checked);
+      };
+
+      // Proactively request Notification permission when enabling notifications
+      notifToggle.addEventListener("change",()=>{
+        if(notifToggle.checked && "Notification" in window && Notification.permission!=="granted"){
+          Notification.requestPermission().catch(()=>{});
+        }
+      });
     }
 
-    function showSystemNotification(username, message) {
-      if (dndToggle.checked) return;
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(`${username} says:`, {
-          body: message,
-          icon: "chat-icon.png" // optional icon
-        });
-      }
-    }
-
-    function showToast(message) {
-      if (dndToggle.checked) return;
-      const toast = document.getElementById("toast");
-      toast.textContent = message;
-      toast.className = "show";
-      setTimeout(() => {
-        toast.className = toast.className.replace("show", "");
-      }, 3000);
-    }
-
-    function notifyUser(username, message) {
-      showSystemNotification(username, message);
-      showToast(`${username}: ${message}`);
-      playSound();
-    }
-
-    // === End Notification Helpers ===
-
+    // Initialize
     showLogin();
   </script>
 </body>
