@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -243,7 +243,7 @@
         log.innerHTML="";
         const msgs=snap.val()||{};
         Object.values(msgs).forEach(m=>{
-          const timeStr=new Date(m.time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+          const timeStr=new Date(m.time).toconst timeStr=new Date(m.time).toLocaleString([],{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false,timeZoneName:"short"});
           const div=el("div");
           div.innerHTML=`[${timeStr}] <b style="color:#4af;cursor:pointer" onclick="startDM('${m.from}')">${m.from}</b>: ${m.text}`;
           log.appendChild(div);
