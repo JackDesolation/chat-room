@@ -7,7 +7,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
   <style>
-    /* Toast notification */
     #toast {
       visibility: hidden;
       min-width: 200px;
@@ -23,28 +22,16 @@
       opacity: 0;
       transition: opacity 0.5s, visibility 0.5s;
     }
-    #toast.show {
-      visibility: visible;
-      opacity: 1;
-    }
-    /* Basic button styles for sidebar */
+    #toast.show { visibility: visible; opacity: 1; }
     .sidebar-btn {
-      background: #444;
-      color: #fff;
-      border: none;
-      padding: 10px;
-      cursor: pointer;
-      text-align: left;
+      background: #444; color: #fff; border: none;
+      padding: 10px; cursor: pointer; text-align: left;
     }
-    .sidebar-btn:hover {
-      background: #555;
-    }
+    .sidebar-btn:hover { background: #555; }
   </style>
 </head>
 <body>
-  <!-- Toast container -->
   <div id="toast"></div>
-
   <script>
     const config = {
       apiKey: "AIzaSyBzD-l4u_VN2klpfvsra-Pv7T1Tsf2BbMA",
@@ -55,29 +42,23 @@
       messagingSenderId: "699194475112",
       appId: "1:699194475112:web:283c2c5159f490fa0471dd"
     };
-
     firebase.initializeApp(config);
 
     const el=(t,txt)=>Object.assign(document.createElement(t),{textContent:txt||""});
     const css=(e,s)=>Object.assign(e.style,s);
 
-    // Container and layout
     const container=el("div");
     css(container,{position:"fixed",top:0,left:0,width:"100vw",height:"100vh",zIndex:999999,display:"flex",fontFamily:"sans-serif",background:"#111",color:"#eee"});
-
     const sidebar=el("div");
     css(sidebar,{width:"160px",background:"#222",padding:"10px",boxSizing:"border-box",display:"flex",flexDirection:"column",gap:"5px"});
-
     ["Chat","Friends","DMs","Rooms","Settings"].forEach(tab=>{
       const btn=el("button",tab);
-      btn.className = "sidebar-btn";
+      btn.className="sidebar-btn";
       btn.onclick=()=>showTab(tab);
       sidebar.appendChild(btn);
     });
-
     const content=el("div");
     css(content,{flexGrow:1,padding:"10px",overflowY:"auto",boxSizing:"border-box"});
-
     container.append(sidebar,content);
     document.body.appendChild(container);
 
@@ -86,8 +67,7 @@
 
     const updateStatus=status=>{if(currentUser)db.ref("users/"+currentUser+"/status").set(status)};
     const trackActivity=()=>{
-      lastActivity=Date.now();
-      updateStatus("Online");
+      lastActivity=Date.now(); updateStatus("Online");
       if(idleTimer)clearTimeout(idleTimer);
       idleTimer=setTimeout(()=>{if(Date.now()-lastActivity>=300000)updateStatus("Idle")},300000);
     };
@@ -99,71 +79,40 @@
       return Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,"0")).join("");
     };
 
-    // Theme helpers
+    // === Theme + Settings ===
     function applyTheme(dark){
       if(dark){
-        document.body.style.background="#111";
-        document.body.style.color="#eee";
+        document.body.style.background="#111"; document.body.style.color="#eee";
         css(container,{background:"#111",color:"#eee"});
         css(sidebar,{background:"#222",color:"#eee"});
         css(content,{color:"#eee"});
-      }else{
-        document.body.style.background="#fff";
-        document.body.style.color="#000";
+      } else {
+        document.body.style.background="#fff"; document.body.style.color="#000";
         css(container,{background:"#fff",color:"#000"});
         css(sidebar,{background:"#f2f2f2",color:"#000"});
         css(content,{color:"#000"});
       }
     }
-    // Restore theme early
     applyTheme(localStorage.getItem("theme")!=="light");
 
-    // Notification permission on load
-    document.addEventListener("DOMContentLoaded", () => {
-      if ("Notification" in window && Notification.permission !== "granted") {
+    document.addEventListener("DOMContentLoaded",()=>{
+      if("Notification" in window && Notification.permission!=="granted"){
         Notification.requestPermission().catch(()=>{});
       }
     });
 
-    // Settings getters
     const getDnd = ()=> localStorage.getItem("dnd")==="true";
     const getNotif = ()=> localStorage.getItem("notif")!=="false";
     const getSound = ()=> localStorage.getItem("sound")!=="false";
 
-    // Notification helpers
-    function playSound() {
-      if (getSound() && !getDnd()) {
-        const audio = new Audio("notification.mp3");
-        audio.play().catch(()=>{});
-      }
-    }
+    function playSound(){ if(getSound() && !getDnd()){ new Audio("notification.mp3").play().catch(()=>{});} }
+    function showSystemNotification(u,m){ if(getDnd()||!getNotif())return; if("Notification" in window&&Notification.permission==="granted"){ new Notification(`${u} says:`,{body:m,icon:"chat-icon.png"});} }
+    function showToast(m){ if(getDnd()||!getNotif())return; const t=document.getElementById("toast"); t.textContent=m; t.className="show"; setTimeout(()=>{t.className=t.className.replace("show","");},3000);}
+    function notifyUser(u,m){ showSystemNotification(u,m); showToast(`${u}: ${m}`); playSound(); }
 
-    function showSystemNotification(username, message) {
-      if (getDnd() || !getNotif()) return;
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(`${username} says:`, {
-          body: message,
-          icon: "chat-icon.png" // optional
-        });
-      }
-    }
+    function isScrolledToBottom(log){ return log.scrollHeight - log.scrollTop - log.clientHeight < 5; }
 
-    function showToast(message) {
-      if (getDnd() || !getNotif()) return;
-      const toast = document.getElementById("toast");
-      toast.textContent = message;
-      toast.className = "show";
-      setTimeout(() => {
-        toast.className = toast.className.replace("show", "");
-      }, 3000);
-    }
-
-    function notifyUser(username, message){
-      showSystemNotification(username, message);
-      showToast(`${username}: ${message}`);
-      playSound();
-    }
-
+    function txtSanitize(s){ return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
     const showLogin=()=>{
       content.innerHTML="";
       const u=el("input"); u.placeholder="Username";
@@ -176,19 +125,14 @@
         userRef.once("value",snap=>{
           if(snap.exists()){
             snap.val().password===pass?(currentUser=uname,updateStatus("Online"),showTab("Chat")):alert("Wrong password");
-          }else{
+          } else {
             userRef.set({password:pass,status:"Online"});
-            currentUser=uname;
-            showTab("Chat");
+            currentUser=uname; showTab("Chat");
           }
         });
       };
-      [u,p,b].forEach(i=>{
-        css(i,{marginBottom:"10px",padding:"8px",width:"100%",background:"#333",color:"#eee",border:"1px solid #555"});
-        content.appendChild(i);
-      });
+      [u,p,b].forEach(i=>{css(i,{marginBottom:"10px",padding:"8px",width:"100%",background:"#333",color:"#eee",border:"1px solid #555"}); content.appendChild(i);});
     };
-
     window.addEventListener("beforeunload",()=>updateStatus("Offline"));
 
     const showTab=tab=>{
@@ -209,13 +153,6 @@
       }
     };
 
-    // Simple sanitize to avoid HTML injection in message text
-    function txtSanitize(s){
-      return s.replace(/[&<>"']/g, c => ({
-        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
-      }[c]));
-    }
-
     const showFriends=()=>{
       content.innerHTML="<h3>Your Friends</h3>";
       const input=el("input"); input.placeholder="Username to friend";
@@ -223,9 +160,8 @@
       btn.onclick=()=>{const v=input.value.trim();v&&sendFriendRequest(v)};
       [input,btn].forEach(i=>css(i,{marginBottom:"5px",width:"100%",padding:"8px",background:"#333",color:"#eee",border:"1px solid #555"}));
       content.append(input,btn);
-      const reqHeader=el("h4","Friend Requests:");
-      content.append(reqHeader);
-      db.ref("users/"+currentUser+"/friendRequests").once("value",snap=>{
+      const reqHeader=el("h4","Friend Requests:"); content.append(reqHeader);
+            db.ref("users/"+currentUser+"/friendRequests").once("value",snap=>{
         const reqs=snap.val()||{};
         Object.keys(reqs).forEach(sender=>{
           const row=el("div"); row.textContent=sender;
@@ -307,25 +243,23 @@
       input.addEventListener("keydown",e=>{"Enter"===e.key&&btn.click()});
       if(friend){
         db.ref("messages/"+currentUser+"/"+friend).on("value",snap=>{
+          const wasAtBottom=isScrolledToBottom(log);
           log.innerHTML="";
           const msgs=snap.val()||{};
           Object.values(msgs).sort((a,b)=>a.time-b.time).forEach(m=>{
             const timeStr=new Date(m.time).toLocaleString([],{
-              year:"numeric",
-              month:"2-digit",
-              day:"2-digit",
-              hour:"2-digit",
-              minute:"2-digit",
-              hour12:false,
-              timeZoneName:"short"
+              year:"numeric",month:"2-digit",day:"2-digit",
+              hour:"2-digit",minute:"2-digit",hour12:false,timeZoneName:"short"
             });
             const div=el("div");
             div.innerHTML=`[${timeStr}] <b>${m.from}</b>: ${txtSanitize(m.text)}`;
             log.appendChild(div);
-            if(m.from!==currentUser){
-              notifyUser(m.from,m.text);
-            }
           });
+          // Notify only if not at bottom and last msg not from you
+          const lastMsg=Object.values(msgs).pop();
+          if(!wasAtBottom && lastMsg && lastMsg.from!==currentUser){
+            notifyUser(lastMsg.from,lastMsg.text);
+          }
           log.scrollTop=log.scrollHeight;
         });
       }else{
@@ -344,6 +278,7 @@
       }
       content.append(log,input,btn);
     };
+
     const showChat=()=>{
       content.innerHTML="<h3>#general</h3>";
       const log=el("div");
@@ -367,30 +302,26 @@
       };
       input.addEventListener("keydown",e=>{"Enter"===e.key&&btn.click()});
       db.ref("public").on("value",snap=>{
+        const wasAtBottom=isScrolledToBottom(log);
         log.innerHTML="";
         const msgs=snap.val()||{};
         Object.values(msgs).forEach(m=>{
           const timeStr=new Date(m.time).toLocaleString([],{
-            year:"numeric",
-            month:"2-digit",
-            day:"2-digit",
-            hour:"2-digit",
-            minute:"2-digit",
-            hour12:false,
-            timeZoneName:"short"
+            year:"numeric",month:"2-digit",day:"2-digit",
+            hour:"2-digit",minute:"2-digit",hour12:false,timeZoneName:"short"
           });
           const div=el("div");
           div.innerHTML=`[${timeStr}] <b style="color:#4af;cursor:pointer" onclick="startDM('${m.from}')">${m.from}</b>: ${txtSanitize(m.text)}`;
           log.appendChild(div);
-          if(m.from!==currentUser){
-            notifyUser(m.from,m.text);
-          }
         });
+        const lastMsg=Object.values(msgs).pop();
+        if(!wasAtBottom && lastMsg && lastMsg.from!==currentUser){
+          notifyUser(lastMsg.from,lastMsg.text);
+        }
         log.scrollTop=log.scrollHeight;
       });
       content.append(log,input,btn);
     };
-
     const showRooms=()=>{
       content.innerHTML="<h3>Private Room</h3>";
       const input=el("input");
@@ -422,7 +353,7 @@
     const showRoom=roomId=>{
       content.innerHTML=`<h3>Room: ${roomId}</h3>`;
       const log=el("div");
-      css(log,{height:"60vh",overflowY:"auto",border:"1px solid #333",padding:"5px",marginBottom:"10px",background:"#181818",color:"#eee"});
+            css(log,{height:"60vh",overflowY:"auto",border:"1px solid #333",padding:"5px",marginBottom:"10px",background:"#181818",color:"#eee"});
       const input=el("input"); input.placeholder="Enter message";
       css(input,{width:"100%",marginBottom:"10px",background:"#222",color:"#eee",border:"1px solid #555",padding:"8px"});
       const btn=el("button","Send");
@@ -439,25 +370,22 @@
       };
       input.addEventListener("keydown",e=>{"Enter"===e.key&&btn.click()});
       db.ref("rooms/"+roomId).on("value",snap=>{
+        const wasAtBottom=isScrolledToBottom(log);
         log.innerHTML="";
         const msgs=snap.val()||{};
         Object.values(msgs).forEach(m=>{
           const timeStr=new Date(m.time).toLocaleString([],{
-            year:"numeric",
-            month:"2-digit",
-            day:"2-digit",
-            hour:"2-digit",
-            minute:"2-digit",
-            hour12:false,
-            timeZoneName:"short"
+            year:"numeric",month:"2-digit",day:"2-digit",
+            hour:"2-digit",minute:"2-digit",hour12:false,timeZoneName:"short"
           });
           const div=el("div");
           div.innerHTML=`[${timeStr}] <b>${m.from}</b>: ${txtSanitize(m.text)}`;
           log.appendChild(div);
-          if(m.from!==currentUser){
-            notifyUser(m.from,m.text);
-          }
         });
+        const lastMsg=Object.values(msgs).pop();
+        if(!wasAtBottom && lastMsg && lastMsg.from!==currentUser){
+          notifyUser(lastMsg.from,lastMsg.text);
+        }
         log.scrollTop=log.scrollHeight;
       });
       content.append(log,input,btn);
@@ -481,26 +409,22 @@
       db.ref(path).remove(()=>alert("Chat cleared!"));
     };
 
-    // Settings tab (persisted with localStorage)
+    // === Settings Tab ===
     function showSettings(){
       content.innerHTML="<h3>Settings</h3>";
 
-      // Do Not Disturb
       const dndLabel=el("label"," Do Not Disturb");
       const dndToggle=el("input"); dndToggle.type="checkbox"; dndToggle.id="dnd-toggle";
       dndLabel.prepend(dndToggle);
 
-      // Notifications
       const notifLabel=el("label"," Enable Notifications");
       const notifToggle=el("input"); notifToggle.type="checkbox"; notifToggle.id="notif-toggle";
       notifLabel.prepend(notifToggle);
 
-      // Sound
       const soundLabel=el("label"," Enable Sound");
       const soundToggle=el("input"); soundToggle.type="checkbox"; soundToggle.id="sound-toggle";
       soundLabel.prepend(soundToggle);
 
-      // Theme
       const themeLabel=el("label"," Dark Mode");
       const themeToggle=el("input"); themeToggle.type="checkbox"; themeToggle.id="theme-toggle";
       themeLabel.prepend(themeToggle);
@@ -516,7 +440,6 @@
       soundToggle.checked = localStorage.getItem("sound")!=="false";
       themeToggle.checked = localStorage.getItem("theme")!=="light";
 
-      // Apply theme immediately
       applyTheme(themeToggle.checked);
 
       // Save on change
@@ -528,7 +451,6 @@
         applyTheme(themeToggle.checked);
       };
 
-      // Proactively request Notification permission when enabling notifications
       notifToggle.addEventListener("change",()=>{
         if(notifToggle.checked && "Notification" in window && Notification.permission!=="granted"){
           Notification.requestPermission().catch(()=>{});
