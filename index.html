@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+      <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -178,7 +178,7 @@
       const btn=el("button","Send");
       css(btn,{width:"100%",background:"#444",color:"#fff",border:"1px solid #555",padding:"8px"});
       btn.onclick=()=>{
-      const txt=input.value.trim();
+        const txt=input.value.trim();
         if(txt){
           if(txt==="/clear"){
             return clearChat("messages/"+currentUser+"/"+friend);
@@ -193,7 +193,15 @@
           log.innerHTML="";
           const msgs=snap.val()||{};
           Object.values(msgs).sort((a,b)=>a.time-b.time).forEach(m=>{
-            const timeStr=new Date(m.time).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+            const timeStr=new Date(m.time).toLocaleString([],{
+              year:"numeric",
+              month:"2-digit",
+              day:"2-digit",
+              hour:"2-digit",
+              minute:"2-digit",
+              hour12:false,
+              timeZoneName:"short"
+            });
             const div=el("div");
             div.innerHTML=`[${timeStr}] <b>${m.from}</b>: ${m.text}`;
             log.appendChild(div);
@@ -241,7 +249,7 @@
       input.addEventListener("keydown",e=>{"Enter"===e.key&&btn.click()});
       db.ref("public").on("value",snap=>{
         log.innerHTML="";
-                const msgs=snap.val()||{};
+        const msgs=snap.val()||{};
         Object.values(msgs).forEach(m=>{
           const timeStr=new Date(m.time).toLocaleString([],{
             year:"numeric",
@@ -312,7 +320,15 @@
         log.innerHTML="";
         const msgs=snap.val()||{};
         Object.values(msgs).forEach(m=>{
-         const timeStr=new Date(m.time).toLocaleString([],{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false,timeZoneName:"short"});
+          const timeStr=new Date(m.time).toLocaleString([],{
+            year:"numeric",
+            month:"2-digit",
+            day:"2-digit",
+            hour:"2-digit",
+            minute:"2-digit",
+            hour12:false,
+            timeZoneName:"short"
+          });
           const div=el("div");
           div.innerHTML=`[${timeStr}] <b>${m.from}</b>: ${m.text}`;
           log.appendChild(div);
@@ -328,7 +344,7 @@
         alert(u+" banned!");
         db.ref("messages").once("value",snap=>{
           const msgs=snap.val();
-          Object.keys(msgs).forEach(chat=>{
+            Object.keys(msgs).forEach(chat=>{
             db.ref("messages/"+chat+"/"+u).remove();
           });
         });
