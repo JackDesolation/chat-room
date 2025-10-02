@@ -1,4 +1,4 @@
-      <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -6,8 +6,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <style>
+    #toast {
+      visibility: hidden;
+      min-width: 200px;
+      background: #333;
+      color: #fff;
+      text-align: center;
+      border-radius: 5px;
+      padding: 10px;
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 1000000;
+      opacity: 0;
+      transition: opacity 0.5s, visibility 0.5s;
+    }
+    #toast.show { visibility: visible; opacity: 1; }
+    .sidebar-btn {
+      background: #444; color: #fff; border: none;
+      padding: 10px; cursor: pointer; text-align: left;
+    }
+    .sidebar-btn:hover { background: #555; }
+  </style>
 </head>
 <body>
+  <div id="toast"></div>
   <script>
     const config = {
       apiKey: "AIzaSyBzD-l4u_VN2klpfvsra-Pv7T1Tsf2BbMA",
@@ -18,18 +42,18 @@
       messagingSenderId: "699194475112",
       appId: "1:699194475112:web:283c2c5159f490fa0471dd"
     };
-
     firebase.initializeApp(config);
 
     const el=(t,txt)=>Object.assign(document.createElement(t),{textContent:txt||""});
     const css=(e,s)=>Object.assign(e.style,s);
+
     const container=el("div");
     css(container,{position:"fixed",top:0,left:0,width:"100vw",height:"100vh",zIndex:999999,display:"flex",fontFamily:"sans-serif",background:"#111",color:"#eee"});
     const sidebar=el("div");
-    css(sidebar,{width:"140px",background:"#222",padding:"10px",boxSizing:"border-box",display:"flex",flexDirection:"column",gap:"5px"});
-    ["Chat","Friends","DMs","Rooms"].forEach(tab=>{
+    css(sidebar,{width:"160px",background:"#222",padding:"10px",boxSizing:"border-box",display:"flex",flexDirection:"column",gap:"5px"});
+    ["Chat","Friends","DMs","Rooms","Settings"].forEach(tab=>{
       const btn=el("button",tab);
-      css(btn,{background:"#444",color:"#fff",border:"none",padding:"10px",cursor:"pointer"});
+      btn.className="sidebar-btn";
       btn.onclick=()=>showTab(tab);
       sidebar.appendChild(btn);
     });
@@ -40,14 +64,20 @@
 
     let currentUser=null,lastActivity=Date.now(),idleTimer=null;
     const db=firebase.database();
+
     const updateStatus=status=>{if(currentUser)db.ref("users/"+currentUser+"/status").set(status)};
     const trackActivity=()=>{
-      lastActivity=Date.now();
-      updateStatus("Online");
+      lastActivity=Date.now(); updateStatus("Online");
       if(idleTimer)clearTimeout(idleTimer);
       idleTimer=setTimeout(()=>{if(Date.now()-lastActivity>=300000)updateStatus("Idle")},300000);
     };
     ["mousemove","keydown","click"].forEach(e=>document.addEventListener(e,trackActivity));
+
+    // Idle on tab out
+    document.addEventListener("visibilitychange",()=>{
+      if(document.hidden){ updateStatus("Idle"); }
+      else { updateStatus("Online"); lastActivity=Date.now(); }
+    });
 
     const sha256=async str=>{
       const b=new TextEncoder().encode(str);
@@ -55,6 +85,41 @@
       return Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,"0")).join("");
     };
 
+    // === Theme + Settings ===
+    function applyTheme(dark){
+      if(dark){
+        document.body.style.background="#111"; document.body.style.color="#eee";
+        css(container,{background:"#111",color:"#eee"});
+        css(sidebar,{background:"#222",color:"#eee"});
+        css(content,{color:"#eee"});
+      } else {
+        document.body.style.background="#fff"; document.body.style.color="#000";
+        css(container,{background:"#fff",color:"#000"});
+        css(sidebar,{background:"#f2f2f2",color:"#000"});
+        css(content,{color:"#000"});
+      }
+    }
+    applyTheme(localStorage.getItem("theme")!=="light");
+
+    document.addEventListener("DOMContentLoaded",()=>{
+      if("Notification" in window && Notification.permission!=="granted"){
+        Notification.requestPermission().catch(()=>{});
+      }
+    });
+
+    const getDnd = ()=> localStorage.getItem("dnd")==="true";
+    const getNotif = ()=> localStorage.getItem("notif")!=="false";
+    const getSound = ()=> localStorage.getItem("sound")!=="false";
+
+    function playSound(){ if(getSound() && !getDnd()){ new Audio("notification.mp3").play().catch(()=>{});} }
+    function showSystemNotification(u,m){ if(getDnd()||!getNotif())return; if("Notification" in window&&Notification.permission==="granted"){ new Notification(`${u} says:`,{body:m,icon:"chat-icon.png",requireInteraction:true});} }
+    function showToast(m){ if(getDnd()||!getNotif())return; const t=document.getElementById("toast"); t.textContent=m; t.className="show"; setTimeout(()=>{t.className=t.className.replace("show","");},3000);}
+    function notifyUser(u,m){ showSystemNotification(u,m); showToast(`${u}: ${m}`); playSound(); }
+
+    function isScrolledToBottom(log){ return log.scrollHeight - log.scrollTop - log.clientHeight < 5; }
+    function txtSanitize(s){ return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+
+    // === Login ===
     const showLogin=()=>{
       content.innerHTML="";
       const u=el("input"); u.placeholder="Username";
@@ -66,20 +131,15 @@
         const userRef=db.ref("users/"+uname);
         userRef.once("value",snap=>{
           if(snap.exists()){
-            snap.val().password===pass?(currentUser=uname,updateStatus("Online"),showTab("Chat")):alert("Wrong password");
-          }else{
+            snap.val().password===pass?(currentUser=uname,updateStatus("Online"),afterLogin(),showTab("Chat")):alert("Wrong password");
+          } else {
             userRef.set({password:pass,status:"Online"});
-            currentUser=uname;
-            showTab("Chat");
+            currentUser=uname; afterLogin(); showTab("Chat");
           }
         });
       };
-      [u,p,b].forEach(i=>{
-        css(i,{marginBottom:"10px",padding:"8px",width:"100%",background:"#333",color:"#eee",border:"1px solid #555"});
-        content.appendChild(i);
-      });
+      [u,p,b].forEach(i=>{css(i,{marginBottom:"10px",padding:"8px",width:"100%",background:"#333",color:"#eee",border:"1px solid #555"}); content.appendChild(i);});
     };
-
     window.addEventListener("beforeunload",()=>updateStatus("Offline"));
 
     const showTab=tab=>{
@@ -89,16 +149,35 @@
       else if(tab==="Friends") showFriends();
       else if(tab==="DMs") showDMs();
       else if(tab==="Rooms") showRooms();
+      else if(tab==="Settings") showSettings();
     };
 
-    const sendMessage=(to,text)=>{
-      if(text){
-        const msg={from:currentUser,text,time:Date.now()};
-        db.ref("messages/"+currentUser+"/"+to).push(msg);
-        db.ref("messages/"+to+"/"+currentUser).push(msg);
-      }
-    };
-
+    // === Global Listeners for Notifications ===
+    function afterLogin(){
+      // Public chat
+      db.ref("public").on("child_added",snap=>{
+        const m=snap.val();
+        if(m && m.from!==currentUser){ notifyUser(m.from,m.text); }
+      });
+      // DMs
+      db.ref("messages/"+currentUser).on("child_added",snap=>{
+        const thread=snap.key;
+        db.ref("messages/"+currentUser+"/"+thread).limitToLast(1).on("child_added",s=>{
+          const m=s.val();
+          if(m && m.from!==currentUser){ notifyUser(m.from,m.text); }
+        });
+      });
+            // Rooms
+      db.ref("rooms").on("child_added",snap=>{
+        const id=snap.key;
+        if(id.includes(currentUser)){
+          db.ref("rooms/"+id).limitToLast(1).on("child_added",s=>{
+            const m=s.val();
+            if(m && m.from!==currentUser){ notifyUser(m.from,m.text); }
+          });
+        }
+      });
+    }
     const showFriends=()=>{
       content.innerHTML="<h3>Your Friends</h3>";
       const input=el("input"); input.placeholder="Username to friend";
@@ -106,8 +185,7 @@
       btn.onclick=()=>{const v=input.value.trim();v&&sendFriendRequest(v)};
       [input,btn].forEach(i=>css(i,{marginBottom:"5px",width:"100%",padding:"8px",background:"#333",color:"#eee",border:"1px solid #555"}));
       content.append(input,btn);
-      const reqHeader=el("h4","Friend Requests:");
-      content.append(reqHeader);
+      const reqHeader=el("h4","Friend Requests:"); content.append(reqHeader);
       db.ref("users/"+currentUser+"/friendRequests").once("value",snap=>{
         const reqs=snap.val()||{};
         Object.keys(reqs).forEach(sender=>{
@@ -118,13 +196,11 @@
           css(declineBtn,{marginLeft:"5px",background:"#f44",color:"#fff",border:"none",padding:"5px",cursor:"pointer"});
           acceptBtn.onclick=()=>acceptFriendRequest(sender);
           declineBtn.onclick=()=>declineFriendRequest(sender);
-          row.appendChild(acceptBtn);
-          row.appendChild(declineBtn);
+          row.appendChild(acceptBtn); row.appendChild(declineBtn);
           content.appendChild(row);
         });
       });
-      const listHeader=el("h4","Friend List:");
-      content.append(listHeader);
+      const listHeader=el("h4","Friend List:"); content.append(listHeader);
       db.ref("users/"+currentUser+"/friends").once("value",snap=>{
         const friends=snap.val()||{};
         Object.keys(friends).forEach(friend=>{
@@ -180,10 +256,10 @@
       btn.onclick=()=>{
         const txt=input.value.trim();
         if(txt){
-          if(txt==="/clear"){
-            return clearChat("messages/"+currentUser+"/"+friend);
-          }
-          sendMessage(friend,txt);
+          if(txt==="/clear"){ return clearChat("messages/"+currentUser+"/"+friend); }
+          const msg={from:currentUser,text:txtSanitize(txt),time:Date.now()};
+          db.ref("messages/"+currentUser+"/"+friend).push(msg);
+          db.ref("messages/"+friend+"/"+currentUser).push(msg);
           input.value="";
         }
       };
@@ -193,28 +269,17 @@
           log.innerHTML="";
           const msgs=snap.val()||{};
           Object.values(msgs).sort((a,b)=>a.time-b.time).forEach(m=>{
-            const timeStr=new Date(m.time).toLocaleString([],{
-              year:"numeric",
-              month:"2-digit",
-              day:"2-digit",
-              hour:"2-digit",
-              minute:"2-digit",
-              hour12:false,
-              timeZoneName:"short"
-            });
+            const timeStr=new Date(m.time).toLocaleString();
             const div=el("div");
-            div.innerHTML=`[${timeStr}] <b>${m.from}</b>: ${m.text}`;
+            div.innerHTML=`[${timeStr}] <b>${m.from}</b>: ${txtSanitize(m.text)}`;
             log.appendChild(div);
           });
           log.scrollTop=log.scrollHeight;
         });
-      }else{
+      } else {
         db.ref("messages/"+currentUser).once("value",snap=>{
-          const threads=Object.entries(snap.val()||{}).map(([user,msgs])=>({
-            user,
-            time:Object.values(msgs).pop()?.time||0
-          })).sort((a,b)=>b.time-a.time);
-          threads.forEach(({user})=>{
+          const threads=Object.keys(snap.val()||{});
+          threads.forEach(user=>{
             const f=el("div",user);
             css(f,{cursor:"pointer"});
             f.onclick=()=>showDMs(user);
@@ -236,14 +301,9 @@
       btn.onclick=()=>{
         const txt=input.value.trim();
         if(txt){
-          if(txt.startsWith("/ban ")){
-            banUser(txt.slice(5));
-          }else if(txt==="/clear"){
-            clearChat("public");
-          }else{
-            db.ref("public").push({from:currentUser,text:txt,time:Date.now()});
-            input.value="";
-          }
+          if(txt.startsWith("/ban ")){ banUser(txt.slice(5)); }
+          else if(txt==="/clear"){ clearChat("public"); }
+          else { db.ref("public").push({from:currentUser,text:txtSanitize(txt),time:Date.now()}); input.value=""; }
         }
       };
       input.addEventListener("keydown",e=>{"Enter"===e.key&&btn.click()});
@@ -251,17 +311,9 @@
         log.innerHTML="";
         const msgs=snap.val()||{};
         Object.values(msgs).forEach(m=>{
-          const timeStr=new Date(m.time).toLocaleString([],{
-            year:"numeric",
-            month:"2-digit",
-            day:"2-digit",
-            hour:"2-digit",
-            minute:"2-digit",
-            hour12:false,
-            timeZoneName:"short"
-          });
+          const timeStr=new Date(m.time).toLocaleString();
           const div=el("div");
-          div.innerHTML=`[${timeStr}] <b style="color:#4af;cursor:pointer" onclick="startDM('${m.from}')">${m.from}</b>: ${m.text}`;
+          div.innerHTML=`[${timeStr}] <b style="color:#4af;cursor:pointer" onclick="startDM('${m.from}')">${m.from}</b>: ${txtSanitize(m.text)}`;
           log.appendChild(div);
         });
         log.scrollTop=log.scrollHeight;
@@ -271,15 +323,13 @@
 
     const showRooms=()=>{
       content.innerHTML="<h3>Private Room</h3>";
-      const input=el("input");
-      input.placeholder="Comma-separated usernames (including yourself)";
+      const input=el("input"); input.placeholder="Comma-separated usernames (including yourself)";
       const btn=el("button","Enter Room");
       [input,btn].forEach(i=>css(i,{marginBottom:"10px",padding:"8px",width:"100%",background:"#333",color:"#eee",border:"1px solid #555"}));
       btn.onclick=()=>{
         const users=input.value.split(",").map(x=>x.trim()).sort();
         if(!users.includes(currentUser)) return alert("Include yourself!");
-        const roomId=users.join("_");
-        showRoom(roomId);
+        const roomId=users.join("_"); showRoom(roomId);
       };
       content.append(input,btn);
       const roomList=el("div");
@@ -297,7 +347,7 @@
       content.append(roomList);
     };
 
-    const showRoom=roomId=>{
+        const showRoom=roomId=>{
       content.innerHTML=`<h3>Room: ${roomId}</h3>`;
       const log=el("div");
       css(log,{height:"60vh",overflowY:"auto",border:"1px solid #333",padding:"5px",marginBottom:"10px",background:"#181818",color:"#eee"});
@@ -308,10 +358,8 @@
       btn.onclick=()=>{
         const txt=input.value.trim();
         if(txt){
-          if(txt==="/clear"){
-            return clearChat("rooms/"+roomId);
-          }
-          db.ref("rooms/"+roomId).push({from:currentUser,text:txt,time:Date.now()});
+          if(txt==="/clear"){ return clearChat("rooms/"+roomId); }
+          db.ref("rooms/"+roomId).push({from:currentUser,text:txtSanitize(txt),time:Date.now()});
           input.value="";
         }
       };
@@ -320,17 +368,9 @@
         log.innerHTML="";
         const msgs=snap.val()||{};
         Object.values(msgs).forEach(m=>{
-          const timeStr=new Date(m.time).toLocaleString([],{
-            year:"numeric",
-            month:"2-digit",
-            day:"2-digit",
-            hour:"2-digit",
-            minute:"2-digit",
-            hour12:false,
-            timeZoneName:"short"
-          });
+          const timeStr=new Date(m.time).toLocaleString();
           const div=el("div");
-          div.innerHTML=`[${timeStr}] <b>${m.from}</b>: ${m.text}`;
+          div.innerHTML=`[${timeStr}] <b>${m.from}</b>: ${txtSanitize(m.text)}`;
           log.appendChild(div);
         });
         log.scrollTop=log.scrollHeight;
@@ -344,7 +384,7 @@
         alert(u+" banned!");
         db.ref("messages").once("value",snap=>{
           const msgs=snap.val();
-            Object.keys(msgs).forEach(chat=>{
+          Object.keys(msgs||{}).forEach(chat=>{
             db.ref("messages/"+chat+"/"+u).remove();
           });
         });
@@ -356,6 +396,56 @@
       db.ref(path).remove(()=>alert("Chat cleared!"));
     };
 
+    // === Settings Tab ===
+    function showSettings(){
+      content.innerHTML="<h3>Settings</h3>";
+
+      const dndLabel=el("label"," Do Not Disturb");
+      const dndToggle=el("input"); dndToggle.type="checkbox"; dndToggle.id="dnd-toggle";
+      dndLabel.prepend(dndToggle);
+
+      const notifLabel=el("label"," Enable Notifications");
+      const notifToggle=el("input"); notifToggle.type="checkbox"; notifToggle.id="notif-toggle";
+      notifLabel.prepend(notifToggle);
+
+      const soundLabel=el("label"," Enable Sound");
+      const soundToggle=el("input"); soundToggle.type="checkbox"; soundToggle.id="sound-toggle";
+      soundLabel.prepend(soundToggle);
+
+      const themeLabel=el("label"," Dark Mode");
+      const themeToggle=el("input"); themeToggle.type="checkbox"; themeToggle.id="theme-toggle";
+      themeLabel.prepend(themeToggle);
+
+      [dndLabel,notifLabel,soundLabel,themeLabel].forEach(l=>{
+        css(l,{display:"block",marginBottom:"10px",cursor:"pointer"});
+        content.appendChild(l);
+      });
+
+      // Restore settings
+      dndToggle.checked = localStorage.getItem("dnd")==="true";
+      notifToggle.checked = localStorage.getItem("notif")!=="false";
+      soundToggle.checked = localStorage.getItem("sound")!=="false";
+      themeToggle.checked = localStorage.getItem("theme")!=="light";
+
+      applyTheme(themeToggle.checked);
+
+      // Save on change
+      dndToggle.onchange=()=>localStorage.setItem("dnd", dndToggle.checked);
+      notifToggle.onchange=()=>localStorage.setItem("notif", notifToggle.checked);
+      soundToggle.onchange=()=>localStorage.setItem("sound", soundToggle.checked);
+      themeToggle.onchange=()=>{
+        localStorage.setItem("theme", themeToggle.checked ? "dark" : "light");
+        applyTheme(themeToggle.checked);
+      };
+
+      notifToggle.addEventListener("change",()=>{
+        if(notifToggle.checked && "Notification" in window && Notification.permission!=="granted"){
+          Notification.requestPermission().catch(()=>{});
+        }
+      });
+    }
+
+    // Initialize
     showLogin();
   </script>
 </body>
